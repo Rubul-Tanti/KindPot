@@ -3,6 +3,8 @@ import { motion, useScroll, useTransform, useSpring, useInView, AnimatePresence 
 import { MdChevronRight, MdEmojiEvents, MdFavoriteBorder, MdGpsFixed, MdElectricBolt, MdArrowDownward, MdStar, MdShield, MdTrendingUp } from 'react-icons/md';
 import Link from 'next/link';
 import { useRef, useState, useEffect } from 'react';
+import { Medal, Trophy } from 'lucide-react';
+import { HiUserGroup } from 'react-icons/hi';
 
 /* ─── Reusable animated text reveal ─── */
 function RevealText({ children, className = '', delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
@@ -95,9 +97,9 @@ export default function Home() {
   ];
 
   const prizes = [
-    { match: '5-Number', share: '40%', prize: 'Jackpot', icon: '🏆', note: 'Rolls over if unclaimed' },
-    { match: '4-Number', share: '35%', prize: 'Split Prize', icon: '🥈', note: 'Shared equally' },
-    { match: '3-Number', share: '25%', prize: 'Split Prize', icon: '🥉', note: 'Shared equally' },
+    { match: '5-Number', share: '40%', prize: 'Jackpot', icon:<Trophy/>, note: 'Rolls over if unclaimed' },
+    { match: '4-Number', share: '35%', prize: 'Split Prize', icon:<Medal/>, note: 'Shared equally' },
+    { match: '3-Number', share: '25%', prize: 'Split Prize', icon: <HiUserGroup/>, note: 'Shared equally' },
   ];
 
   const stats = [
