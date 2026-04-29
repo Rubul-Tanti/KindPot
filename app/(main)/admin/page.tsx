@@ -6,7 +6,7 @@ import { OverviewSection } from "@/components/admin/overview/overview";
 import { UsersSection } from "@/components/admin/user";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IconBase } from "react-icons/lib";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -127,8 +127,11 @@ const NAV_ITEMS: { id: NavSection; label: string; icon: string }[] = [
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
-  const [active, setActive] = useState<NavSection>("overview");
-
+  const initialState=NAV_ITEMS.find((n)=>n.id===localStorage.getItem("admin_dash_state"))?.id||'overview'
+  const [active, setActive] = useState<NavSection>(initialState);
+    useEffect(()=>{
+      localStorage.setItem("admin_dash_state",active)
+    },[active])
   const sectionMap: Record<NavSection, React.ReactNode> = {
     overview:  <OverviewSection  />,
     users:     <UsersSection     />,
