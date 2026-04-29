@@ -243,35 +243,7 @@ export default function Home() {
           </motion.p>
 
           {/* CTAs */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 1, ease: [0.16, 1, 0.3, 1] }}
-            className="flex flex-col sm:flex-row gap-4 justify-center items-center"
-          >
-            <motion.button
-              whileHover={{ scale: 1.05, boxShadow: '0 16px 40px rgba(26,92,66,0.35)' }}
-              whileTap={{ scale: 0.97 }}
-              className="group px-8 py-4 bg-[#1a5c42] text-white rounded-full font-semibold text-lg transition-shadow inline-flex items-center gap-3"
-            >
-              Start Free Trial
-              <motion.span
-                className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center"
-                animate={{ x: [0, 3, 0] }}
-                transition={{ repeat: Infinity, duration: 1.5, ease: 'easeInOut' }}
-              >
-                <MdChevronRight size={14} />
-              </motion.span>
-            </motion.button>
 
-            <motion.button
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.97 }}
-              className="px-8 py-4 bg-white border border-zinc-200 text-zinc-700 rounded-full font-semibold text-lg hover:border-zinc-300 hover:bg-zinc-50 transition-colors inline-flex items-center gap-2 shadow-sm"
-            >
-              Watch Demo
-            </motion.button>
-          </motion.div>
 
           {/* Trust badges */}
           <motion.div
