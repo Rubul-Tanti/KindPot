@@ -3,7 +3,10 @@ import { Button } from "@/components/ui/button";
 import { useDraw } from "@/hooks/use-draw";
 import { SetStateAction, useState } from "react";
 import { toast } from "react-toastify";
-import type {Draw} from "@/server/draw/types"
+import type {Draw, PaymentStatus, VerificationStatus, Winner} from "@/server/draw/types"
+import { useMutation } from "@tanstack/react-query";
+import { handleConcludeDraw } from "@/server/draw";
+import { handleUpdatePaymentVerification, handleUpdateVerificationPayment } from "@/server/winner";
 
 type JackpotStatus = "Rolled over" | "Paid" | "Pending";
 type DrawLogic = "random" | "algorithmic";
@@ -26,6 +29,135 @@ interface DrawFormState {
   fiveMatchPct: string;
   fourMatchPct: string;
   threeMatchPct: string;
+}
+
+const DIALOG_CONFIG = {
+  conclude: {
+    iconBg: "bg-red-100",
+    iconColor: "text-red-600",
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+      />
+    ),
+    title: "Conclude Draw?",
+    description: (draw: Draw) =>
+      `This will permanently conclude draw. All participants will be notified and no further entries will be accepted. This action cannot be undone.`,
+    confirmLabel: "Conclude Draw",
+    confirmVariant: "destructive" as const,
+  },
+  cancel: {
+    iconBg: "bg-gray-100",
+    iconColor: "text-gray-600",
+    icon: (
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6 18L18 6M6 6l12 12"
+      />
+    ),
+    title: "Cancel Draw?",
+    description: (draw: Draw) =>
+      `This will cancel Draw and remove it entirely. All participants will be notified and any entries will be discarded. Are you sure?`,
+    confirmLabel: "Cancel Draw",
+    confirmVariant: "outline" as const,
+  },
+};
+
+function CloseDrawDialog({
+  type,
+  draw,
+  onClose,
+  onConfirm,
+}: {
+  type: "conclude" | "cancel";
+  draw: Draw;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const config = DIALOG_CONFIG[type];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200">
+
+        {/* Icon */}
+        <div className="flex justify-center pt-7 pb-2">
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${config.iconBg}`}>
+            <svg
+              className={`w-6 h-6 ${config.iconColor}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              {config.icon}
+            </svg>
+          </div>
+        </div>
+
+        {/* Text */}
+        <div className="px-6 pb-5 text-center">
+          <h2 className="text-base font-semibold text-gray-900 mb-2">
+            {config.title}
+          </h2>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            {config.description(draw)}
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 px-6 pb-6">
+          <Button variant="outline" className="flex-1" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant={config.confirmVariant}
+            className={`flex-1 ${
+              type === "cancel"
+                ? "border-gray-400 text-gray-700 hover:bg-gray-100"
+                : ""
+            }`}
+            onClick={onConfirm}
+          >
+            {config.confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// Usage
+export function DrawControls({draw,type}:{draw:Draw,type:'conclude'|'cancel'}) {
+  const concludeDraw=useMutation({mutationFn:handleConcludeDraw})
+  const [open, setOpen] = useState(false);
+  function handleConfirm() {
+    // TODO: call your close-draw API here
+    concludeDraw.mutate({drawId:draw.id,status:type==='conclude'?'completed':"cancelled"},{onSuccess:()=>{toast.success(`Draw ${type==='conclude'?'completed':"cancelled"} `)},onError:()=>{toast.error("something went wrong")},onSettled:()=>{setOpen(false);}})
+  }
+
+  return (
+    <>
+      {open && (
+        <CloseDrawDialog
+        type ={type}
+        draw={draw}
+          onClose={() => setOpen(false)}
+          onConfirm={handleConfirm}
+        />
+      )}
+      <Button variant="destructive" onClick={() => setOpen(true)}>
+         {type==='cancel'?"Cancel Draw":"Conclude Draw"}
+      </Button>
+    </>
+  );
 }
 
 
@@ -296,8 +428,9 @@ function DrawFormLayout({
 
 export function ActiveDrawCard({ draw, onEdit }: { draw:Draw, onEdit:any
  }) {
-
- const [logic, setLogic]         = useState<DrawLogic>("random");
+const updatePaymentStatus=useMutation({mutationFn:handleUpdatePaymentVerification})
+const updateVerificationStatus=useMutation({mutationFn:handleUpdateVerificationPayment})
+  const [logic, setLogic]         = useState<DrawLogic>("random");
   const [simNums, setSimNums]     = useState<number[]>([0, 0, 0, 0, 0]);
   const [showConfirm, setShowConfirm] = useState(false);  // ← add this
   const { publishResult } = useDraw();
@@ -321,8 +454,13 @@ new Intl.NumberFormat("en-GB", {
       }
     );
   };
+const onUpdateVerification= (winnerId: string, status: VerificationStatus) => {
+ updateVerificationStatus.mutate({id:winnerId,status},{onSuccess:()=>{toast.success("updated Verification status")},onError:()=>{toast.success("failed to update verification status")}})
+}
+const onUpdatePayment=   (winnerId: string, status: PaymentStatus) => {
+ updatePaymentStatus.mutate({id:winnerId,status},{onSuccess:()=>{toast.success("updated payment status")},onError:()=>{toast.success("failed to update payment status")}})
 
-
+}
   const simulate = () => {
     const used = new Set<number>();
     const nums: number[] = [];
@@ -345,35 +483,30 @@ new Intl.NumberFormat("en-GB", {
   ];
 
   return (
-    <div style={{ background: "#fff", border: "0.5px solid #ebebeb", borderRadius: 16, padding: "1.25rem 1.5rem", marginBottom: "1.25rem", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.25rem" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Active Draw</p>
-            <span style={{
-              display: "inline-flex", alignItems: "center", gap: 5,
-              background: statusColor.bg, color: statusColor.color,
-              borderRadius: 999, padding: "2px 10px", fontSize: 10,
-              fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
-            }}>
-              <span style={{ width: 5, height: 5, borderRadius: "50%", background: statusColor.dot, display: "inline-block" }} />
-              {draw.status}
-            </span>
-          </div>
-          <p style={{ fontSize: 12, color: "#aaa", margin: 0 }}>Draw #{draw.drawNumber}</p>
-        </div>{
-         onEdit&&
+  <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-6 mb-5 shadow-sm">
 
+  {/* ── Header ── */}
+  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
+    <div>
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <p className="text-sm font-bold m-0">Active Draw</p>
+        <span
+          className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold tracking-widest uppercase"
+          style={{ background: statusColor.bg, color: statusColor.color }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: statusColor.dot }} />
+          {draw.status}
+        </span>
+      </div>
+      <p className="text-xs text-gray-400 m-0">Draw #{draw.drawNumber}</p>
+    </div>
+
+    {onEdit && (
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <DrawControls draw={draw} type="cancel" />
         <button
           onClick={onEdit}
-          style={{
-            display: "flex", alignItems: "center", gap: 6,
-            fontSize: 12, fontWeight: 500, padding: "6px 14px",
-            border: "0.5px solid #e5e5e5", borderRadius: 8,
-            background: "transparent", cursor: "pointer",
-            color: "#555", transition: "border-color 0.15s",
-          }}
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 border border-gray-200 rounded-lg bg-transparent cursor-pointer text-gray-600 hover:border-gray-300 transition-colors"
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -381,297 +514,375 @@ new Intl.NumberFormat("en-GB", {
           </svg>
           Update
         </button>
-
-        } </div>
-
-      {/* Info grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.75rem", marginBottom: "1rem" }}>
-        {rows.map(({ label, value }) => (
-          <div key={label} style={{ background: "#fafafa", borderRadius: 10, padding: "0.6rem 0.85rem" }}>
-            <p style={{ fontSize: 10, color: "#aaa", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 3px" }}>{label}</p>
-            <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: "#222" }}>{value}</p>
-          </div>
-        ))}
       </div>
-
-      {/* Prize distribution bar */}
-
-      <div>
-        <p style={{ fontSize: 10, color: "#aaa", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>Prize distribution</p>
-        <div style={{ display: "flex", height: 7, borderRadius: 999, overflow: "hidden", gap: 2 }}>
-          <div style={{ width: `${draw.fiveMatchPct}%`,   background: "#378ADD" }} title={`Jackpot ${draw.fiveMatchPct}%`} />
-          <div style={{ width: `${draw.fourMatchPct}%`,   background: "#C9A84C" }} title={`4-match ${draw.fourMatchPct}%`} />
-          <div style={{ width: `${draw.threeMatchPct}%`,  background: "#C97A3A" }} title={`3-match ${draw.threeMatchPct}%`} />
-        </div>
-        <div style={{ display: "flex", gap: 16, marginTop: 6 }}>
-          {[
-            { label: "5-match (Jackpot)", pct: draw.fiveMatchPct,  color: "#378ADD" },
-            { label: "4-match",           pct: draw.fourMatchPct,  color: "#C9A84C" },
-            { label: "3-match",           pct: draw.threeMatchPct, color: "#C97A3A" },
-          ].map(({ label, pct, color }) => (
-            <span key={label} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#888" }}>
-              <span style={{ width: 8, height: 8, borderRadius: 2, background: color, display: "inline-block" }} />
-              {label} — {pct}%
-            </span>
-          ))}
-        </div>
-      </div>
-         {onEdit&&<>
-      {draw.drawNumber?
-<div style={{
-  background: "#fff", border: "0.5px solid #ebebeb",
-  borderRadius: 16, padding: "1.25rem 1.5rem",
-  marginTop: "1rem", boxShadow: "0 1px 6px rgba(0,0,0,0.04)",
-}}>
-
-  {/* Result row */}
-  <div style={{
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    marginBottom: "1.25rem", paddingBottom: "1rem",
-    borderBottom: "0.5px solid #f0f0f0",
-  }}>
-    <div className="w-full">
-      <p style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 4px" }}>
-        Draw result
-      </p>
-      {draw.drawNumber ? (
-        <div style={{ display: "flex", gap: 8 }} className=" justify-between flex flex-wrap w-full">
-          <div  className="flex  gap-2 mt-2">
-          {draw.drawNumber.split(",").map((n: string, i: number) => (
-            <div key={i} style={{
-              width: 34, height: 34, borderRadius: "50%",
-              background: "#378ADD", color: "#fff",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 13, fontWeight: 600,
-            }}>
-              {n.trim()}
-            </div>
-          ))}
-          </div>
-          <Button variant={"destructive"}>Close Draw</Button>
-        </div>
-      ) : (
-        <span style={{
-          display: "inline-flex", alignItems: "center", gap: 5,
-          background: "#fafafa", border: "0.5px solid #e5e5e5",
-          borderRadius: 999, padding: "3px 12px",
-          fontSize: 12, color: "#aaa", fontWeight: 500,
-        }}>
-          Not published yet
-        </span>
-      )}
-    </div>
-
-    {draw.jackpotRolledOver && (
-      <span style={{
-        display: "inline-flex", alignItems: "center", gap: 5,
-        background: "#f0fdf4", border: "0.5px solid #bbf7d0",
-        borderRadius: 999, padding: "4px 12px",
-        fontSize: 11, color: "#16a34a", fontWeight: 500,
-      }}>
-        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
-        Jackpot rolled over
-      </span>
     )}
   </div>
 
-  {/* Winners table */}
-  <p style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 12px" }}>
-    Winners
-  </p>
+  {/* ── Info grid ── */}
+  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-4">
+    {rows.map(({ label, value }) => (
+      <div key={label} className="bg-gray-50 rounded-xl px-3 py-2.5">
+        <p className="text-[10px] text-gray-400 uppercase tracking-wide m-0 mb-0.5">{label}</p>
+        <p className="text-sm font-semibold m-0 text-gray-800">{value}</p>
+      </div>
+    ))}
+  </div>
 
-  {(!draw.winners || draw.winners.length === 0) ? (
-    <div style={{
-      textAlign: "center", padding: "2rem 0",
-      background: "#fafafa", borderRadius: 10,
-      border: "0.5px dashed #e5e5e5",
-    }}>
-      <p style={{ fontSize: 13, color: "#ccc", margin: 0 }}>No winners recorded yet</p>
+  {/* ── Prize distribution bar ── */}
+  <div>
+    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1.5">Prize distribution</p>
+    <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
+      <div className="bg-blue-500" style={{ width: `${draw.fiveMatchPct}%` }} title={`Jackpot ${draw.fiveMatchPct}%`} />
+      <div className="bg-amber-400" style={{ width: `${draw.fourMatchPct}%` }} title={`4-match ${draw.fourMatchPct}%`} />
+      <div className="bg-orange-400" style={{ width: `${draw.threeMatchPct}%` }} title={`3-match ${draw.threeMatchPct}%`} />
     </div>
-  ) : (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+      {[
+        { label: "5-match (Jackpot)", pct: draw.fiveMatchPct,  color: "#378ADD" },
+        { label: "4-match",           pct: draw.fourMatchPct,  color: "#C9A84C" },
+        { label: "3-match",           pct: draw.threeMatchPct, color: "#C97A3A" },
+      ].map(({ label, pct, color }) => (
+        <span key={label} className="flex items-center gap-1 text-[11px] text-gray-500">
+          <span className="w-2 h-2 rounded-sm inline-block" style={{ background: color }} />
+          {label} — {pct}%
+        </span>
+      ))}
+    </div>
+  </div>
+
+  {/* ── Results + Winners / Draw logic ── */}
+  {onEdit && (
+    <>
+      {draw.drawNumber ? (
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-6 mt-4 shadow-sm">
+
+          {/* Draw result row */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5 pb-4 border-b border-gray-100">
+            <div className="w-full">
+              <p className="text-[11px] text-gray-400 uppercase tracking-wide mb-2">Draw result</p>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
+                {/* Number balls — scroll on tiny screens */}
+                <div className="flex gap-2 flex-wrap">
+                  {draw.drawNumber.split(",").map((n: string, i: number) => (
+                    <div
+                      key={i}
+                      className="w-9 h-9 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-semibold flex-shrink-0"
+                    >
+                      {n.trim()}
+                    </div>
+                  ))}
+                </div>
+                <div className="sm:ml-auto">
+                  <DrawControls draw={draw} type="conclude" />
+                </div>
+              </div>
+            </div>
+
+            {draw.jackpotRolledOver && (
+              <span className="inline-flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-full px-3 py-1 text-[11px] text-green-700 font-medium self-start sm:self-center whitespace-nowrap">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                Jackpot rolled over
+              </span>
+            )}
+          </div>
+
+          {/* Winners */}
+          <p className="text-[11px] text-gray-400 uppercase tracking-wide mb-3">Winners</p>
+
+          {(!draw.winners || draw.winners.length === 0) ? (
+            <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              <p className="text-sm text-gray-300 m-0">No winners recorded yet</p>
+            </div>
+          ) : (
+           <>
+  {/* Desktop table */}
+  <div className="hidden md:block overflow-x-auto">
+    <table className="w-full border-collapse text-sm">
       <thead>
         <tr>
-          {["Username", "Match type", "Amount", "Proof", "Status"].map((h) => (
-            <th key={h} style={{
-              textAlign: "left", padding: "8px 12px",
-              fontSize: 11, fontWeight: 500, color: "#888",
-              borderBottom: "0.5px solid #e5e5e5",
-              textTransform: "uppercase", letterSpacing: "0.04em",
-            }}>
+          {["Username", "Email", "Match type", "Amount", "Proof", "Verification", "Payment", ""].map((h) => (
+            <th
+              key={h}
+              className="text-left px-3 py-2 text-[11px] font-medium text-gray-400 border-b border-gray-100 uppercase tracking-wide"
+            >
               {h}
             </th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {draw.winners.map((w: any, i: number) => {
+        {draw.winners.map((w, i: number) => {
           const isLast = i === draw.winners.length - 1;
-          const rowBorder = isLast ? "none" : "0.5px solid #f5f5f5";
 
           const tierConfig: Record<string, { bg: string; color: string; label: string }> = {
-            jackpot: { bg: "#FEF9EC", color: "#B07D1A", label: "5-match jackpot" },
-            gold:    { bg: "#FDF6E3", color: "#8C6A00", label: "4-match gold"    },
-            bronze:  { bg: "#FBF4EE", color: "#8B4C1E", label: "3-match bronze"  },
+            fullmatch:  { bg: "#FEF9EC", color: "#B07D1A", label: "5-match jackpot" },
+            fourmatch:  { bg: "#FDF6E3", color: "#8C6A00", label: "4-match gold"    },
+            threematch: { bg: "#FBF4EE", color: "#8B4C1E", label: "3-match bronze"  },
           };
-          const tier = tierConfig[w.tier?.toLowerCase()] ?? { bg: "#fafafa", color: "#888", label: w.tier ?? "—" };
+          const tier = tierConfig[w.winnerType?.toLowerCase()] ?? { bg: "#fafafa", color: "#888", label: w.winnerType ?? "—" };
 
-          const statusConfig: Record<string, { bg: string; color: string; dot: string }> = {
-            paid:      { bg: "#f0fdf4", color: "#16a34a", dot: "#22c55e" },
-            pending:   { bg: "#fffbeb", color: "#b45309", dot: "#f59e0b" },
-            cancelled: { bg: "#fef2f2", color: "#dc2626", dot: "#f87171" },
+          const verificationConfig: Record<string, { bg: string; color: string; dot: string }> = {
+            pending:  { bg: "#fffbeb", color: "#b45309", dot: "#f59e0b" },
+            approved: { bg: "#f0fdf4", color: "#16a34a", dot: "#22c55e" },
+            rejected: { bg: "#fef2f2", color: "#dc2626", dot: "#f87171" },
           };
-          const st = statusConfig[w.status?.toLowerCase()] ?? statusConfig.pending;
+          const vc = verificationConfig[w.verificationStatus?.toLowerCase()] ?? verificationConfig.pending;
+
+          const paymentConfig: Record<string, { bg: string; color: string; dot: string }> = {
+            pending: { bg: "#fffbeb", color: "#b45309", dot: "#f59e0b" },
+            paid:    { bg: "#f0fdf4", color: "#16a34a", dot: "#22c55e" },
+            failed:  { bg: "#fef2f2", color: "#dc2626", dot: "#f87171" },
+          };
+          const pc = paymentConfig[w.paymentStatus?.toLowerCase()] ?? paymentConfig.pending;
 
           return (
-            <tr key={w.id ?? i}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#fafafa")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              style={{ transition: "background 0.1s" }}
+            <tr
+              key={w.id ?? i}
+              className={`hover:bg-gray-50 transition-colors ${!isLast ? "border-b border-gray-50" : ""}`}
             >
               {/* Username */}
-              <td style={{ padding: "12px 12px", borderBottom: rowBorder }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{
-                    width: 28, height: 28, borderRadius: "50%",
-                    background: "#E6F1FB", color: "#185FA5",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 11, fontWeight: 600, flexShrink: 0,
-                  }}>
-                    {(w.user?.userName ?? w.userName ?? "?")[0].toUpperCase()}
+              <td className="py-3 px-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                    {(w.user?.userName ?? w.userId ?? "?")[0].toUpperCase()}
                   </div>
-                  <span style={{ fontWeight: 500 }}>
-                    {w.user?.userName ?? w.userName ?? "—"}
-                  </span>
+                  <span className="font-medium text-sm">{w.user?.userName ?? w.userId ?? "—"}</span>
                 </div>
               </td>
 
+              {/* Email */}
+              <td className="py-3 px-3 text-xs text-gray-500">{w.user?.email ?? "—"}</td>
+
               {/* Match type */}
-              <td style={{ padding: "12px 12px", borderBottom: rowBorder }}>
-                <span style={{
-                  display: "inline-flex", alignItems: "center", gap: 5,
-                  background: tier.bg, color: tier.color,
-                  borderRadius: 999, padding: "2px 10px",
-                  fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                }}>
+              <td className="py-3 px-3">
+                <span className="text-[10px] font-bold px-2 py-1 rounded-full uppercase" style={{ background: tier.bg, color: tier.color }}>
                   {tier.label}
                 </span>
               </td>
 
               {/* Amount */}
-              <td style={{ padding: "12px 12px", borderBottom: rowBorder }}>
-                <span style={{ fontWeight: 600 }}>
-                  {new Intl.NumberFormat("en-GB", {
-                    style: "currency",
-                    currency: draw.currency ?? "GBP",
-                  }).format(w.amount ?? 0)}
-                </span>
+              <td className="py-3 px-3 font-semibold text-sm">
+                {new Intl.NumberFormat("en-GB", { style: "currency", currency: draw.currency ?? "GBP" }).format(w.prizeAmount ?? 0)}
               </td>
 
-              {/* Proof image */}
-              <td style={{ padding: "12px 12px", borderBottom: rowBorder }}>
-                {w.proofImage ? (
-                    <a
-                    href={w.proofImage}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 5,
-                      fontSize: 12, color: "#378ADD", textDecoration: "none", fontWeight: 500,
-                    }}
+              {/* Proof */}
+              <td className="py-3 px-3 text-xs">
+                {w.proofImage
+                  ? <a href={w.proofImage} target="_blank" className="text-blue-500">View</a>
+                  : <span className="text-gray-300">No proof</span>}
+              </td>
+
+              {/* Verification status */}
+              <td className="py-3 px-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] px-2 py-1 rounded-full font-semibold uppercase inline-flex items-center gap-1 flex-shrink-0" style={{ background: vc.bg, color: vc.color }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: vc.dot }} />
+                    {w.verificationStatus}
+                  </span>
+                  <select
+                    defaultValue={w.verificationStatus}
+                    onChange={(e) => onUpdateVerification(w.id, e.target.value as VerificationStatus)}
+                    className="text-[10px] text-gray-500 border border-gray-200 rounded-md px-1.5 py-1 bg-white cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300"
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                      <polyline points="15 3 21 3 21 9"/>
-                      <line x1="10" y1="14" x2="21" y2="3"/>
-                    </svg>
-                    View proof
-                  </a>
-                ) : (
-                  <span style={{ fontSize: 12, color: "#ccc" }}>No proof</span>
-                )}
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
               </td>
 
-              {/* Status */}
-              <td style={{ padding: "12px 12px", borderBottom: rowBorder }}>
-                <span style={{
-                  display: "inline-flex", alignItems: "center", gap: 4,
-                  background: st.bg, color: st.color,
-                  borderRadius: 999, padding: "2px 10px",
-                  fontSize: 10, fontWeight: 600, letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                }}>
-                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: st.dot, display: "inline-block" }} />
-                  {w.status ?? "Pending"}
-                </span>
+              {/* Payment status */}
+              <td className="py-3 px-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] px-2 py-1 rounded-full font-semibold uppercase inline-flex items-center gap-1 flex-shrink-0" style={{ background: pc.bg, color: pc.color }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: pc.dot }} />
+                    {w.paymentStatus}
+                  </span>
+                  <select
+                    defaultValue={w.paymentStatus}
+                    onChange={(e) => onUpdatePayment(w.id, e.target.value as PaymentStatus)}
+                    className="text-[10px] text-gray-500 border border-gray-200 rounded-md px-1.5 py-1 bg-white cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </div>
               </td>
+
+              {/* Empty actions col */}
+              <td className="py-3 px-3" />
             </tr>
           );
         })}
       </tbody>
     </table>
-  )}
-</div>
-      :
-      <div className="mt-5" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
-        <div>
-          <p style={{ fontSize: 12, fontWeight: 500, color: "#888", marginBottom: 8 }}>Draw logic</p>
-          {(["random", "algorithmic"] as DrawLogic[]).map((opt) => (
-            <div
-              key={opt}
-              onClick={() => setLogic(opt)}
-              style={{
-                border: logic === opt ? "0.5px solid #378ADD" : "0.5px solid #e5e5e5",
-                background: logic === opt ? "#E6F1FB" : "transparent",
-                borderRadius: 8, padding: "0.75rem 1rem",
-                marginBottom: 8, cursor: "pointer",
-              }}
-            >
-              <p style={{ fontSize: 13, fontWeight: 500, color: logic === opt ? "#185FA5" : "inherit", marginBottom: 2 }}>
-                {opt === "random" ? "Random draw" : "Algorithmic draw"}
-              </p>
-              <p style={{ fontSize: 12, color: "#888" }}>
-                {opt === "random" ? "Standard lottery-style number generation" : "Weighted by most/least frequent scores"}
-              </p>
-            </div>
-          ))}
-        </div>
+  </div>
 
-        <div>
-          <p style={{ fontSize: 12, fontWeight: 500, color: "#888", marginBottom: 8 }}>Draw simulation</p>
-          <div style={{ background: "#f5f5f3", borderRadius: 8, padding: "1rem", textAlign: "center" }}>
-            <p style={{ fontSize: 12, color: "#888", marginBottom: "0.5rem" }}>April 2026 draw numbers</p>
-            <div style={{ display: "flex", gap: 8, justifyContent: "center", margin: "0.75rem 0" }}>
-              {simNums.map((n, i) => (
-                <div key={i} style={{
-                  width: 36, height: 36, borderRadius: "50%",
-                  background: "#378ADD", color: "#fff",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 14, fontWeight: 500,
-                }}>{n}</div>
-              ))}
+  {/* Mobile cards */}
+  <div className="md:hidden space-y-2">
+    {draw.winners.map((w, i: number) => {
+      const tierConfig: Record<string, { bg: string; color: string; label: string }> = {
+        fullmatch:  { bg: "#FEF9EC", color: "#B07D1A", label: "5-match jackpot" },
+        fourmatch:  { bg: "#FDF6E3", color: "#8C6A00", label: "4-match gold"    },
+        threematch: { bg: "#FBF4EE", color: "#8B4C1E", label: "3-match bronze"  },
+      };
+      const tier = tierConfig[w.winnerType?.toLowerCase()] ?? { bg: "#fafafa", color: "#888", label: w.winnerType ?? "—" };
+
+      const verificationConfig: Record<string, { bg: string; color: string; dot: string }> = {
+        pending:  { bg: "#fffbeb", color: "#b45309", dot: "#f59e0b" },
+        approved: { bg: "#f0fdf4", color: "#16a34a", dot: "#22c55e" },
+        rejected: { bg: "#fef2f2", color: "#dc2626", dot: "#f87171" },
+      };
+      const vc = verificationConfig[w.verificationStatus?.toLowerCase()] ?? verificationConfig.pending;
+
+      const paymentConfig: Record<string, { bg: string; color: string; dot: string }> = {
+        pending: { bg: "#fffbeb", color: "#b45309", dot: "#f59e0b" },
+        paid:    { bg: "#f0fdf4", color: "#16a34a", dot: "#22c55e" },
+        failed:  { bg: "#fef2f2", color: "#dc2626", dot: "#f87171" },
+      };
+      const pc = paymentConfig[w.paymentStatus?.toLowerCase()] ?? paymentConfig.pending;
+
+      return (
+        <div key={w.id ?? i} className="border border-gray-100 rounded-xl p-3 bg-white space-y-3">
+
+          {/* Name + email */}
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+              {(w.user?.userName ?? w.userId ?? "?")[0].toUpperCase()}
             </div>
-            <p style={{ fontSize: 11, color: "#888", marginBottom: "0.75rem" }}>Simulation mode — not published</p>
-            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <Btn onClick={simulate}>Re-simulate</Btn>
-              <Btn primary onClick={() =>setShowConfirm(true)}>Publish results</Btn>
+            <div className="min-w-0">
+              <p className="font-semibold text-sm m-0 truncate">{w.user?.userName ?? "—"}</p>
+              <p className="text-xs text-gray-400 m-0 truncate">{w.user?.email ?? "—"}</p>
+            </div>
+          </div>
+
+          {/* Tier + amount */}
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full uppercase" style={{ background: tier.bg, color: tier.color }}>
+              {tier.label}
+            </span>
+            <span className="font-semibold text-sm">
+              {new Intl.NumberFormat("en-GB", { style: "currency", currency: draw.currency ?? "GBP" }).format(w.prizeAmount ?? 0)}
+            </span>
+          </div>
+
+          {/* Proof */}
+          <div className="flex items-center justify-between text-xs border-t border-gray-50 pt-2">
+            <span className="text-gray-400">Proof</span>
+            {w.proofImage
+              ? <a href={w.proofImage} target="_blank" className="text-blue-500 font-medium">View</a>
+              : <span className="text-gray-300">No proof</span>}
+          </div>
+
+          {/* Verification status */}
+          <div className="flex items-center justify-between border-t border-gray-50 pt-2">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-gray-400">Verification</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase inline-flex items-center gap-1" style={{ background: vc.bg, color: vc.color }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: vc.dot }} />
+                {w.verificationStatus}
+              </span>
+            </div>
+            <select
+              defaultValue={w.verificationStatus}
+              onChange={(e) => onUpdateVerification(w.id, e.target.value as VerificationStatus)}
+              className="text-[10px] text-gray-500 border border-gray-200 rounded-md px-1.5 py-1 bg-white cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300"
+            >
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+
+          {/* Payment status */}
+          <div className="flex items-center justify-between border-t border-gray-50 pt-2">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-gray-400">Payment</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase inline-flex items-center gap-1" style={{ background: pc.bg, color: pc.color }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: pc.dot }} />
+                {w.paymentStatus}
+              </span>
+            </div>
+            <select
+              defaultValue={w.paymentStatus}
+              onChange={(e) => onUpdatePayment(w.id, e.target.value as PaymentStatus)}
+              className="text-[10px] text-gray-500 border border-gray-200 rounded-md px-1.5 py-1 bg-white cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-300"
+            >
+              <option value="pending">Pending</option>
+              <option value="paid">Paid</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+
+        </div>
+      );
+    })}
+  </div>
+</>
+          )}
+        </div>
+      ) : (
+        /* ── Draw logic + Simulation ── */
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
+          {/* Draw logic */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Draw logic</p>
+            {(["random", "algorithmic"] as DrawLogic[]).map((opt) => (
+              <div
+                key={opt}
+                onClick={() => setLogic(opt)}
+                className="rounded-lg px-4 py-3 mb-2 cursor-pointer border transition-colors"
+                style={{
+                  border: logic === opt ? "0.5px solid #378ADD" : "0.5px solid #e5e5e5",
+                  background: logic === opt ? "#E6F1FB" : "transparent",
+                }}
+              >
+                <p className="text-sm font-medium m-0 mb-0.5" style={{ color: logic === opt ? "#185FA5" : "inherit" }}>
+                  {opt === "random" ? "Random draw" : "Algorithmic draw"}
+                </p>
+                <p className="text-xs text-gray-400 m-0">
+                  {opt === "random" ? "Standard lottery-style number generation" : "Weighted by most/least frequent scores"}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Simulation */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">Draw simulation</p>
+            <div className="bg-gray-50 rounded-xl p-4 text-center">
+              <p className="text-xs text-gray-400 mb-3">April 2026 draw numbers</p>
+              <div className="flex gap-2 justify-center flex-wrap mb-3">
+                {simNums.map((n, i) => (
+                  <div
+                    key={i}
+                    className="w-9 h-9 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-medium flex-shrink-0"
+                  >
+                    {n}
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 mb-3">Simulation mode — not published</p>
+              <div className="flex gap-2 justify-center flex-wrap">
+                <Btn onClick={simulate}>Re-simulate</Btn>
+                <Btn primary onClick={() => setShowConfirm(true)}>Publish results</Btn>
+              </div>
             </div>
           </div>
         </div>
-      </div>}
-      </>
-      }
-          {/* ── Draw logic + Simulation ── */}
+      )}
+    </>
+  )}
 
-        <ConfirmDialog
-        open={showConfirm}
-        onClose={() => !publishResult.isPending && setShowConfirm(false)}
-        onConfirm={handlePublish}
-        isLoading={publishResult.isPending}
-        numbers={simNums}
-      />
-    </div>
+  <ConfirmDialog
+    open={showConfirm}
+    onClose={() => !publishResult.isPending && setShowConfirm(false)}
+    onConfirm={handlePublish}
+    isLoading={publishResult.isPending}
+    numbers={simNums}
+  />
+</div>
   );
 }
 
@@ -725,7 +936,6 @@ const [month, setMonth]   = useState("");
   const {data:allDraws,isLoading:allDrawIsLoading}=getAllDraw(page,limit,status,year,month)
   const { data, isLoading } = getActiveDraw();
   const activeDraw = data?.data;
-
 
   // Build initial values for update form from active draw
   const updateInitial: DrawFormState = activeDraw ? {
@@ -846,7 +1056,7 @@ const [month, setMonth]   = useState("");
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
       <thead>
         <tr>
-          {["#", "Period", "Prize Pool", "Distribution", "Status","Result", "Jackpot", "Winners"].map((h) => (
+          {[ "Period", "Prize Pool", "Distribution", "Status","Result", "Jackpot", "Winners"].map((h) => (
             <th key={h} style={{
               textAlign: "left", padding: "8px 12px",
               fontSize: 11, fontWeight: 500, color: "#888",
@@ -874,10 +1084,7 @@ const [month, setMonth]   = useState("");
               onMouseEnter={(e) => (e.currentTarget.style.background = "#fafafa")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >
-              {/* Draw number */}
-              <td style={{ padding: "12px 12px", borderBottom: rowBorder, color: "#bbb", fontSize: 12 }}>
-                {d.drawNumber ?? "—"}
-              </td>
+
 
               {/* Period */}
               <td style={{ padding: "12px 12px", borderBottom: rowBorder }}>

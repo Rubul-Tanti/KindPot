@@ -1,8 +1,35 @@
-type Winner = {
+export type WinnerType = "fiveMatch" | "fourMatch" | "threeMatch";
+
+export type VerificationStatus = "pending" | "verified" | "rejected";
+export type PaymentStatus = "pending" | "paid" | "failed";
+
+export type Winner = {
   id: string;
+  drawId: string;
   userId: string;
-  matchCount: 3 | 4 | 5;
-  prizeAmount: number;
+
+  winnerType: WinnerType;
+  winnerScore: string;
+
+  verificationStatus: VerificationStatus;
+  paymentStatus: PaymentStatus;
+
+  proofImage: string;
+
+  prizeAmount: number | null;
+  adminNotes: string | null;
+
+  verifiedAt: string | null;
+  paidAt: string | null;
+
+  createdAt: string;
+  updatedAt: string;
+
+  // ✅ FIX: user object exists
+  user?: {
+    userName: string;
+    email: string;
+  };
 };
 export type Draw = {
   id: string;

@@ -13,6 +13,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { handleGetRecentUsers } from "@/server/user";
 import { useEffect, useState, useCallback } from "react";
+import { Button } from "@/components/ui/button";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SIDEBAR_STATE_KEY = "admin_sidebar_open";
@@ -280,8 +281,32 @@ export function OverviewSection() {
           <ActiveDrawSkeleton />
         ) : !activeDraw ? (
           <SectionCard title="Active Draw">
-            <div className="text-sm text-gray-500">No Active Draw</div>
-          </SectionCard>
+  <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+
+    {/* Icon */}
+    <div className="w-11 h-11 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center">
+      <svg
+        className="w-5 h-5 text-gray-400"
+        fill="none" viewBox="0 0 24 24"
+        stroke="currentColor" strokeWidth={1.5}
+        strokeLinecap="round" strokeLinejoin="round"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+    </div>
+
+    {/* Text */}
+    <div>
+      <p className="text-sm font-medium text-gray-700">No active draw</p>
+      <p className="text-xs text-gray-400 mt-0.5">Start a new draw to see it here</p>
+    </div>
+
+
+
+  </div>
+</SectionCard>
         ) : (
           <ActiveDrawCard draw={activeDraw} onEdit={undefined} />
         )}

@@ -41,3 +41,7 @@ export const handlePublishDrawResult=async({drawId,result}:{drawId:string,result
   const res=await api.patch(`/api/draw/publish-result/${drawId}`,{result})
   return res.data
 }
+export const handleConcludeDraw=async({drawId,status}:{drawId:string,status:'active'|'cancelled'|'completed'})=>{
+  const res=await api.patch(`/api/draw/${drawId}/status`,{status})
+  return res.data
+}

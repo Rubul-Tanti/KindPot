@@ -10,6 +10,8 @@ import type {Draw} from '@/server/draw/types'
 import { Button } from "@/components/ui/button";
 import { ImageIcon } from "lucide-react";
 import { useWinner } from "@/hooks/use-winner";
+import { TbWheel } from "react-icons/tb";
+import { FaSpider } from "react-icons/fa6";
 function ParticipationDialog({
   open,
   onClose,
@@ -312,7 +314,7 @@ export default function DrawPage() {
   const result=draw?.drawNumber
     const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
-
+  const winner=data?.data?.winners.find(w=>w?.user?.email===user.email)
   const handleFile = (f: File) => {
     if (!f.type.startsWith("image/")) return;
     setFile(f);
@@ -372,7 +374,7 @@ const { d, h, m, s } = useCountdown(targetTime);
   if (!draw) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAFAFA" }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 32, marginBottom: 12 }}>🏌️</div>
+        <div style={{ fontSize: 32, marginBottom: 12 }} className="text-center flex justify-center"> <TbWheel  className="animate-spin  text-yellow-400 drop-shadow-[0_0_10px_gold]" size={26} /></div>
         <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>No active draw</p>
         <p style={{ fontSize: 13, color: "#aaa" }}>Check back soon for the next monthly draw</p>
       </div>
@@ -730,7 +732,7 @@ const { d, h, m, s } = useCountdown(targetTime);
       </div>
 
       {/* Your result */}
-      {data?.yourParticipation && (() => {
+      {data?.yourParticipation&&! winner && (() => {
         const yourScores  = data.yourParticipation.score.split(",").map((s) => s.trim());
         const winningNums = result.split(",").map((s) => s.trim());
         const matched     = yourScores.filter((s) => winningNums.includes(s)).length;
@@ -865,12 +867,94 @@ const { d, h, m, s } = useCountdown(targetTime);
               onClick={()=>{file&&createWinner.mutate(file,{onSuccess:()=>{toast.success("winner created successfully")},onError:()=>{toast.error("fail to create Winner")}})}}
               className="w-full mt-6 bg-[#C9A84C] text-white hover:bg-[#b8963f] disabled:opacity-50 rounded-full"
             >
-              Claim Now
+              {createWinner.isPending?<FaSpider className="animate-spin"/>:"Claim now"}
+
             </Button>
           </div>
         </div>
       )}
+        {/* ── Desktop table ── */}
+<div className="hidden md:block overflow-x-auto">
+  <table className="w-full border-collapse text-sm">
+    <thead>
+      <tr className="border-b border-gray-100">
+        {["Username", "Match type", "Amount", "Status"].map((h) => (
+          <th
+            key={h}
+            className="text-left px-3 py-2.5 text-[11px] font-medium text-gray-400 uppercase tracking-wide"
+          >
+            {h}
+          </th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      {winner && (
+        <tr className="hover:bg-gray-50 transition-colors border-b border-gray-50">
+          <td className="py-3 px-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                {(winner.user?.userName ?? winner.userId ?? "?")[0].toUpperCase()}
+              </div>
+              <span className="font-medium text-sm">
+                {winner.user?.userName ?? winner.userId ?? "—"}
+              </span>
+            </div>
+          </td>
+          <td className="py-3 px-3">
+            <span className="text-[10px] font-semibold px-2 py-1 rounded-md bg-gray-100 text-gray-600 uppercase">
+              {winner.winnerType ?? "—"}
+            </span>
+          </td>
+          <td className="py-3 px-3 font-semibold text-sm text-gray-800">
+            {new Intl.NumberFormat("en-GB", {
+              style: "currency",
+              currency: draw.currency ?? "GBP",
+            }).format(winner.prizeAmount ?? 0)}
+          </td>
+          <td className="py-3 px-3">
+            <span className="text-[10px] font-semibold px-2 py-1 rounded-md bg-gray-100 text-gray-600 uppercase">
+              {winner.paymentStatus ?? "—"}
+            </span>
+          </td>
+        </tr>
+      )}
+    </tbody>
+  </table>
+</div>
 
+{/* ── Mobile card ── */}
+{winner && (
+  <div className="md:hidden mt-3 space-y-2">
+    <p className="text-[11px] text-gray-400 uppercase tracking-wide mb-2">Winner</p>
+    <div className="border border-gray-100 rounded-xl p-3 bg-white space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+            {(winner.user?.userName ?? winner.userId ?? "?")[0].toUpperCase()}
+          </div>
+          <p className="font-semibold text-sm m-0 truncate">
+            {winner.user?.userName ?? winner.userId ?? "—"}
+          </p>
+        </div>
+        <span className="text-[10px] font-semibold px-2 py-1 rounded-md bg-gray-100 text-gray-600 uppercase">
+          {winner.paymentStatus ?? "—"}
+        </span>
+      </div>
+      <div className="flex items-center justify-between border-t border-gray-50 pt-2">
+        <span className="text-[10px] font-semibold px-2 py-1 rounded-md bg-gray-100 text-gray-600 uppercase">
+          {winner.winnerType ?? "—"}
+        </span>
+        <span className="font-semibold text-sm text-gray-800">
+          {new Intl.NumberFormat("en-GB", {
+            style: "currency",
+            currency: draw.currency ?? "GBP",
+          }).format(winner.prizeAmount ?? 0)}
+        </span>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Not participated */}
       {!data?.yourParticipation && (

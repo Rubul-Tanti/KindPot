@@ -14,3 +14,7 @@ export const handleGetGolfScore=async({page,limit}:{page:number,limit:number})=>
     const res=await api.get(`/api/golf-score?${queryParams.toString()}`)
     return res.data as GetGolfScoresResponse
 }
+export const handleDeleteScore=async(id:string)=>{
+  const res=await  api.delete(`/api/golf-score/${id}`)
+  return res.data
+}

@@ -17,7 +17,8 @@ import { toast } from "react-toastify"
 import { MdTrendingUp, MdOutlineDateRange, MdAdd, MdEmojiEvents } from "react-icons/md"
 import { useUserContext } from "@/contextProvider"
 import { useRouter } from "next/navigation"
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { handleDeleteScore } from "@/server/golf_score"
 
 export default function UserScoresPanel() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -29,14 +30,20 @@ export default function UserScoresPanel() {
   const limit=6
 
 const queryClient = useQueryClient();
-
-
   const { getLastFiveScores, addGolfScore, getGolfScores } = useGolfScore()
   const { data: recentScores, isLoading: recentLoading } = getLastFiveScores()
   const { data: allScores, isLoading: historyLoading } = getGolfScores({ page, limit})
-
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const deleteScore=useMutation({mutationFn:handleDeleteScore})
   const count = recentScores?.count || 0
+const handleDelete = async () => {
+  if(!deleteId)return
+  deleteScore.mutate(deleteId,{onSuccess:()=>{toast.success("Score deleted")
+    queryClient.invalidateQueries({queryKey:["golfScore"]})
+    queryClient.invalidateQueries({queryKey:["golfScoresHistory"]})
+  },onError:()=>{toast.error("Failed to delete")},onSettled:()=>{setDeleteId(null)}})
 
+};
   const handleAddScore = async (e: React.FormEvent) => {
     e.preventDefault()
     if(user.role==='VIEWER'){
@@ -138,56 +145,108 @@ if (selectedDate > today&&selectedDate !== today) {
       )
     }
 
-    return (
-      <div className="w-full overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <table className="w-full text-sm text-left">
-          <thead>
-            <tr className="bg-gradient-to-r from-[#1a5c42] to-[#2d7a5f] text-white">
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider rounded-tl-2xl">
-                Played On
-              </th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">
-                Score
-              </th>
-              <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider rounded-tr-2xl">
-                Updated
-              </th>
-            </tr>
-          </thead>
-          <tbody className="text-gray-700 divide-y divide-gray-100">
-            {allScores.data.map((row, i) => (
-              <tr
-                key={row.id || i}
-                className="hover:bg-emerald-50/40 transition-colors duration-200"
+return (
+  <div className="w-full overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+    <table className="w-full text-sm text-left">
+      <thead>
+        <tr className="bg-gradient-to-r from-[#1a5c42] to-[#2d7a5f] text-white">
+          <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider rounded-tl-2xl">
+            Played On
+          </th>
+          <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">
+            Score
+          </th>
+          <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider">
+            Updated
+          </th>
+          <th className="py-4 px-6 font-semibold text-xs uppercase tracking-wider rounded-tr-2xl text-right">
+            Action
+          </th>
+        </tr>
+      </thead>
+
+      <tbody className="text-gray-700 divide-y divide-gray-100">
+        {allScores.data.map((row, i) => (
+          <tr
+            key={row.id || i}
+            className="hover:bg-emerald-50/40 transition-colors duration-200"
+          >
+            {/* Played On */}
+            <td className="py-4 px-6">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                  <MdOutlineDateRange className="w-3.5 h-3.5 text-[#1a5c42]" />
+                </div>
+                <span className="font-semibold text-gray-900 text-sm">
+                  {new Date(row.playedOn).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </span>
+              </div>
+            </td>
+
+            {/* Score */}
+            <td className="py-4 px-6">
+              <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-50 text-[#1a5c42] font-bold text-lg border border-emerald-100">
+                {row.score}
+              </span>
+            </td>
+
+            {/* Updated */}
+            <td className="py-4 px-6 text-gray-500">
+              {new Date(row.updatedAt).toLocaleDateString()}
+            </td>
+
+            {/* Delete Button */}
+            <td className="py-4 px-6 text-right">
+              <button
+                onClick={() =>{setDeleteId(row.id)}}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition"
               >
-                <td className="py-4 px-6">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
-                      <MdOutlineDateRange className="w-3.5 h-3.5 text-[#1a5c42]" />
-                    </div>
-                    <span className="font-semibold text-gray-900 text-sm">
-                      {new Date(row.playedOn).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </span>
-                  </div>
-                </td>
-                <td className="py-4 px-6">
-                  <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-50 text-[#1a5c42] font-bold text-lg border border-emerald-100">
-                    {row.score}
-                  </span>
-                </td>
-                <td className="py-4 px-6 text-gray-500">
-                  {new Date(row.updatedAt).toLocaleDateString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                Delete
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    {deleteId && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6">
+
+      <h2 className="text-lg font-semibold text-gray-900 mb-2">
+        Delete Score?
+      </h2>
+
+      <p className="text-sm text-gray-500 mb-6">
+        This action cannot be undone. Are you sure you want to delete this score?
+      </p>
+
+      <div className="flex justify-end gap-3">
+        {/* Cancel */}
+        <button
+          onClick={() => setDeleteId(null)}
+          className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+
+        {/* Confirm Delete */}
+        <button
+          onClick={()=>{handleDelete()}}
+          disabled={deleteScore.isPending}
+          className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+        >
+          {deleteScore.isPending ? "Deleting..." : "Delete"}
+        </button>
       </div>
-    )
+    </div>
+  </div>
+)}
+  </div>
+);
   }
 
   return (
